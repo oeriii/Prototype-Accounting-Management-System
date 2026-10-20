@@ -1,0 +1,35 @@
+/* barebones - mostly the browser's default look */
+
+body {
+  font-family: sans-serif;
+  margin: 10px;
+}
+
+table {
+  border-collapse: collapse;
+}
+
+th,
+td {
+  border: 1px solid #999;
+  padding: 3px 6px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.num {
+  text-align: right;
+}
+
+.error,
+.bad {
+  color: red;
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+.card {
+  margin-bottom: 20px;
+}

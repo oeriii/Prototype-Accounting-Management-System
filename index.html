@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Seimas' Brazillian and Barbers</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+
+  <body>
+    <header>
+      <h1>Seimas' Brazillian and Barbers</h1>
+    </header>
+
+    <nav id="tabs"></nav>
+    <main id="content"></main>
+
+    <script>
+
+      const accountTypes = {
+        A: "Asset",
+        L: "Liability",
+        E: "Equity",
+        R: "Revenue",
+        X: "Expense"
+      };
+
+      let accounts = [
+        { code: "1010", name: "Cash", type: "A", side: "D" },
+        { code: "1020", name: "Accounts Receivable", type: "A", side: "D" },
+        { code: "1030", name: "Supplies", type: "A", side: "D" },
+        { code: "1040", name: "Prepaid Rent", type: "A", side: "D" },
+        { code: "1110", name: "Barbershop Equipment", type: "A", side: "D" },
+        { code: "1111", name: "Accumulated Depreciation", type: "A", side: "C" },
+        { code: "2010", name: "Accounts Payable", type: "L", side: "C" },
+        { code: "2020", name: "Salaries Payable", type: "L", side: "C" },
+        { code: "2030", name: "Unearned Revenue", type: "L", side: "C" },
+        { code: "3010", name: "Owner’s Capital", type: "E", side: "C" },
+        { code: "3020", name: "Owner’s Drawings", type: "E", side: "D" },
+        { code: "4010", name: "Haircut Revenue", type: "R", side: "C" },
+        { code: "4020", name: "Shave & Grooming Revenue", type: "R", side: "C" },
+        { code: "5010", name: "Salaries Expense", type: "X", side: "D" },
+        { code: "5020", name: "Rent Expense", type: "X", side: "D" },
+        { code: "5030", name: "Supplies Expense", type: "X", side: "D" },
+        { code: "5040", name: "Utilities Expense", type: "X", side: "D" },
+        { code: "5050", name: "Depreciation Expense", type: "X", side: "D" }
+      ];
+
+      let lastId = 0;
+
+      function newEntry(date, description, debit, credit, amount, isAdjusting) {
+        lastId++;
+        return {
+          id: lastId,
+          date: date,
+          description: description,
+          debit: debit,
+          credit: credit,
+          amount: amount,
+          isAdjusting: isAdjusting === true
+        };
+      }
+
+      let entries = [
+        newEntry("2026-10-01", "Owner invested cash in the shop", "1010", "3010", 200000),
+        newEntry("2026-10-02", "Bought barber chairs & equipment (cash)", "1110", "1010", 60000),
+        newEntry("2026-10-03", "Prepaid 3 months’ rent", "1040", "1010", 15000),
+        newEntry("2026-10-04", "Bought supplies on account", "1030", "2010", 8000),
+        newEntry("2026-10-10", "Haircut services (cash)", "1010", "4010", 25000),
+        newEntry("2026-10-12", "Shave & grooming services (cash)", "1010", "4020", 9000),
+        newEntry("2026-10-15", "Received prepaid grooming memberships", "1010", "2030", 6000),
+        newEntry("2026-10-20", "Paid barbers’ salaries", "5010", "1010", 12000),
+        newEntry("2026-10-25", "Paid electricity & water", "5040", "1010", 2500),
+        newEntry("2026-10-28", "Haircut services on account", "1020", "4010", 4000),
+        newEntry("2026-10-30", "Owner withdrew cash", "3020", "1010", 5000)
+      ];
+
+      const adjustmentTypes = {
+        "Supplies used": ["5030", "1030", "Supplies used during the month"],
+        "Depreciation": ["5050", "1111", "Monthly depreciation of equipment"],
+        "Prepaid expense expired": ["5020", "1040", "Rent expense for the month (from prepaid)"],
+        "Unearned revenue earned": ["2030", "4020", "Memberships earned this month"],
+        "Accrued expense": ["5010", "2020", "Salaries earned but unpaid"],
+        "Accrued revenue": ["1020", "4010", "Services rendered but not yet billed"]
+      };
+
+      const tabNames = ["Chart of Accounts", "Transactions", "Trial Balance", "Adjustments"];
+      let currentTab = "Chart of Accounts";
+      let errors = {}; 
+
+      function $(selector) {
+        return document.querySelector(selector);
+      }
+
+      function formatPeso(n) {
+        if (!n) return "";
+        return "₱" + n.toLocaleString("en-PH", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2
+        });
+      }
+
+      function escapeHtml(text) {
+        return text
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+
+      function sortedAccounts() {
+        return accounts.slice().sort(function (a, b) {
+          return a.code.localeCompare(b.code);
+        });
+      }
+
+      function accountName(code) {
+        const found = accounts.find(function (a) {
+          return a.code === code;
+        });
+        return found ? found.code + " · " + found.name : code;
+      }
+
+      function accountOptions(selectedCode) {
+        let html = "";
+        sortedAccounts().forEach(function (a) {
+          const selected = a.code === selectedCode ? " selected" : "";
+          html += `<option value="${a.code}"${selected}>${a.code} · ${a.name}</option>`;
+        });
+        return html;
+      }
+
+      function getBalances(isAdjusting) {
+        const totals = {};
+        accounts.forEach(function (a) {
+          totals[a.code] = 0;
+        });
+
+        entries.forEach(function (e) {
+          if (e.isAdjusting !== isAdjusting) return;
+          totals[e.debit] += e.amount;
+          totals[e.credit] -= e.amount;
+        });
+
+        return totals;
+      }
+
+      function toColumns(balance) {
+        return balance > 0 ? [balance, 0] : [0, -balance];
+      }
+
+      function chartOfAccountsPage() {
+        let rows = "";
+        sortedAccounts().forEach(function (a) {
+          rows += `
+            <tr>
+              <td>${a.code}</td>
+              <td>${escapeHtml(a.name)}</td>
+              <td>${accountTypes[a.type]}</td>
+              <td>${a.side === "D" ? "Debit" : "Credit"}</td>
+              <td><button class="delete" title="Delete" onclick="deleteAccount('${a.code}')">✕</button></td>
+            </tr>`;
+        });
+
+        let typeOptions = "";
+        for (const key in accountTypes) {
+          typeOptions += `<option value="${key}">${accountTypes[key]}</option>`;
+        }
+
+        return `
+          <div class="card">
+            <h2>Add account</h2>
+            <div class="form">
+              <label>Code
+                <input id="new-code" placeholder="e.g. 5060" />
+              </label>
+              <label>Account name
+                <input id="new-name" placeholder="e.g. Marketing Expense" />
+              </label>
+              <label>Type
+                <select id="new-type">${typeOptions}</select>
+              </label>
+              <label>Normal balance
+                <select id="new-side">
+                  <option value="auto">Automatic</option>
+                  <option value="D">Debit</option>
+                  <option value="C">Credit</option>
+                </select>
+              </label>
+              <button class="primary" onclick="addAccount()">Add</button>
+            </div>
+            <div class="error">${errors.accounts || ""}</div>
+          </div>
+
+          <div class="card">
+            <h2>Chart of Accounts <span class="badge">${accounts.length} accounts</span></h2>
+            <div class="table-wrap">
+              <table>
+                <tr>
+                  <th>Code</th>
+                  <th>Account</th>
+                  <th>Type</th>
+                  <th>Normal balance</th>
+                  <th></th>
+                </tr>
+                ${rows}
+              </table>
+            </div>
+          </div>`;
+      }
+
+      function addAccount() {
+        const code = $("#new-code").value.trim();
+        const name = $("#new-name").value.trim();
+        const type = $("#new-type").value;
+        let side = $("#new-side").value;
+
+        if (code === "" || name === "") {
+          errors.accounts = "Enter a code and a name.";
+          return showPage();
+        }
+
+        const alreadyUsed = accounts.some(function (a) {
+          return a.code === code;
+        });
+        if (alreadyUsed) {
+          errors.accounts = "That code already exists.";
+          return showPage();
+        }
+
+        if (side === "auto") {
+          side = (type === "A" || type === "X") ? "D" : "C";
+        }
+
+        accounts.push({ code: code, name: name, type: type, side: side });
+        errors.accounts = "";
+        showPage();
+      }
+
+      function deleteAccount(code) {
+        const inUse = entries.some(function (e) {
+          return e.debit === code || e.credit === code;
+        });
+        if (inUse) {
+          errors.accounts = "Can’t delete " + code + " because it’s used in an entry.";
+          return showPage();
+        }
+
+        accounts = accounts.filter(function (a) {
+          return a.code !== code;
+        });
+        errors.accounts = "";
+        showPage();
+      }
+
+      function entryTable(isAdjusting) {
+        const list = entries
+          .filter(function (e) {
+            return e.isAdjusting === isAdjusting;
+          })
+          .sort(function (a, b) {
+            return a.date.localeCompare(b.date) || a.id - b.id;
+          });
+
+        if (list.length === 0) {
+          return `<p class="hint">No entries yet.</p>`;
+        }
+
+        let rows = "";
+        list.forEach(function (e) {
+          rows += `
+            <tr>
+              <td rowspan="2">${e.date}</td>
+              <td>${escapeHtml(accountName(e.debit))}</td>
+              <td class="num">${formatPeso(e.amount)}</td>
+              <td></td>
+              <td rowspan="2"><button class="delete" onclick="deleteEntry(${e.id})">✕</button></td>
+            </tr>
+            <tr>
+              <td >
+                ${escapeHtml(accountName(e.credit))}<br />
+                <small class="sub">${escapeHtml(e.description)}</small>
+              </td>
+              <td></td>
+              <td class="num">${formatPeso(e.amount)}</td>
+            </tr>`;
+        });
+
+        return `
+          <div class="table-wrap">
+            <table>
+              <tr>
+                <th>Date</th>
+                <th>Account / description</th>
+                <th class="num">Debit</th>
+                <th class="num">Credit</th>
+                <th></th>
+              </tr>
+              ${rows}
+            </table>
+          </div>`;
+      }
+
+      function entryForm(isAdjusting) {
+        const prefix = isAdjusting ? "adj" : "tx";
+
+        let typePicker = "";
+        let description = "";
+        if (isAdjusting) {
+          let options = "";
+          for (const name in adjustmentTypes) {
+            options += `<option>${name}</option>`;
+          }
+          typePicker = `
+            <label>Adjustment type
+              <select id="adj-type" onchange="fillFromTemplate()">${options}</select>
+            </label>`;
+          description = adjustmentTypes["Supplies used"][2];
+        }
+
+        const defaultDebit = isAdjusting ? "5030" : "1010";
+        const defaultCredit = isAdjusting ? "1030" : "4010";
+
+        return `
+          <div class="form">
+            ${typePicker}
+            <label>Date
+              <input type="date" id="${prefix}-date" value="2026-10-31" />
+            </label>
+            <label>Description
+              <input id="${prefix}-desc" placeholder="Description" value="${description}" />
+            </label>
+            <label>Debit account
+              <select id="${prefix}-debit">${accountOptions(defaultDebit)}</select>
+            </label>
+            <label>Credit account
+              <select id="${prefix}-credit">${accountOptions(defaultCredit)}</select>
+            </label>
+            <label>Amount (₱)
+              <input type="number" min="0" step="0.01" id="${prefix}-amount" />
+            </label>
+            <button class="primary" onclick="postEntry(${isAdjusting})">Post entry</button>
+          </div>
+          <div class="error">${errors[prefix] || ""}</div>`;
+      }
+
+      function fillFromTemplate() {
+        const template = adjustmentTypes[$("#adj-type").value];
+        $("#adj-debit").value = template[0];
+        $("#adj-credit").value = template[1];
+        $("#adj-desc").value = template[2];
+      }
+
+      function postEntry(isAdjusting) {
+        const prefix = isAdjusting ? "adj" : "tx";
+        const date = $("#" + prefix + "-date").value;
+        const description = $("#" + prefix + "-desc").value.trim();
+        const debit = $("#" + prefix + "-debit").value;
+        const credit = $("#" + prefix + "-credit").value;
+        const amount = Math.round(parseFloat($("#" + prefix + "-amount").value) * 100) / 100;
+
+        if (!date || !description || !(amount > 0)) {
+          errors[prefix] = "Fill in the date, description and an amount above zero.";
+          return showPage();
+        }
+        if (debit === credit) {
+          errors[prefix] = "Debit and credit accounts must be different.";
+          return showPage();
+        }
+
+        entries.push(newEntry(date, description, debit, credit, amount, isAdjusting));
+        errors[prefix] = "";
+        showPage();
+      }
+
+      function deleteEntry(id) {
+        entries = entries.filter(function (e) {
+          return e.id !== id;
+        });
+        showPage();
+      }
+
+
+      function transactionsPage() {
+        return `
+          <div class="card">
+            <h2>Record a business transaction</h2>
+            ${entryForm(false)}
+            <p class="hint">Each transaction has one debit and one equal credit, so the books stay balanced.</p>
+          </div>
+          <div class="card">
+            <h2>General Journal</h2>
+            ${entryTable(false)}
+          </div>`;
+      }
+
+      function adjustmentsPage() {
+        return `
+          <div class="card">
+            <h2>Record an adjusting entry</h2>
+            ${entryForm(true)}
+            <p class="hint">Picking a type fills in the usual accounts, but you can still change them. Adjustments show up in the Trial Balance.</p>
+          </div>
+          <div class="card">
+            <h2>Adjusting Entries</h2>
+            ${entryTable(true)}
+          </div>`;
+      }
+
+      function trialBalancePage() {
+        const before = getBalances(false);
+        const adjustments = getBalances(true);
+        const sums = [0, 0, 0, 0, 0, 0];
+        let netIncome = 0;
+        let rows = "";
+
+        sortedAccounts().forEach(function (a) {
+          const beforeBalance = before[a.code];
+          const adjBalance = adjustments[a.code];
+
+          const beforeCols = toColumns(beforeBalance);
+          const adjCols = toColumns(adjBalance);
+          const afterCols = toColumns(beforeBalance + adjBalance);
+          const allCols = beforeCols.concat(adjCols, afterCols);
+
+          allCols.forEach(function (value, i) {
+            sums[i] += value;
+          });
+
+          if (a.type === "R" || a.type === "X") {
+            netIncome -= beforeBalance + adjBalance;
+          }
+
+          const used = beforeCols[0] || beforeCols[1] || adjCols[0] || adjCols[1];
+          if (!used) return;
+
+          rows += `<tr><td>${a.code}</td><td>${escapeHtml(a.name)}</td>`;
+          allCols.forEach(function (value) {
+            rows += `<td class="num">${formatPeso(value)}</td>`;
+          });
+          rows += `</tr>`;
+        });
+
+        const totals = sums.map(function (n) {
+          return Math.round(n * 100) / 100;
+        });
+
+        function balanceCheck(debit, credit) {
+          if (debit === credit) return `<span class="good">✓ Balanced</span>`;
+          return `<span class="bad">✗ Out of balance</span>`;
+        }
+
+        let totalCells = "";
+        totals.forEach(function (n) {
+          totalCells += `<td class="num">${formatPeso(n) || "₱0.00"}</td>`;
+        });
+
+        return `
+          <div class="card">
+            <h2>Trial Balance worksheet · as of Oct 31, 2026</h2>
+            <div class="table-wrap">
+              <table >
+                <tr>
+                  <th rowspan="2">Code</th>
+                  <th rowspan="2">Account</th>
+                  <th colspan="2" class="num">Unadjusted</th>
+                  <th colspan="2" class="num">Adjustments</th>
+                  <th colspan="2" class="num">Adjusted</th>
+                </tr>
+                <tr>
+                  <th class="num">Debit</th><th class="num">Credit</th>
+                  <th class="num">Debit</th><th class="num">Credit</th>
+                  <th class="num">Debit</th><th class="num">Credit</th>
+                </tr>
+                ${rows}
+                <tr class="totals">
+                  <td></td>
+                  <td>Totals</td>
+                  ${totalCells}
+                </tr>
+                <tr>
+                  <td></td>
+                  <td></td>
+                  <td colspan="2" class="num">${balanceCheck(totals[0], totals[1])}</td>
+                  <td colspan="2" class="num">${balanceCheck(totals[2], totals[3])}</td>
+                  <td colspan="2" class="num">${balanceCheck(totals[4], totals[5])}</td>
+                </tr>
+              </table>
+            </div>
+          </div>
+
+          <div class="card">
+            <h2>Net ${netIncome >= 0 ? "income" : "loss"} (after adjustments)</h2>
+            <div class="net-income ${netIncome >= 0 ? "good" : "bad"}">
+              ${formatPeso(Math.abs(netIncome)) || "₱0.00"}
+            </div>
+          </div>`;
+      }
+
+      const pages = {
+        "Chart of Accounts": chartOfAccountsPage,
+        "Transactions": transactionsPage,
+        "Trial Balance": trialBalancePage,
+        "Adjustments": adjustmentsPage
+      };
+
+      function goToTab(name) {
+        currentTab = name;
+        showPage();
+      }
+
+      function showTabs() {
+        let html = "";
+        tabNames.forEach(function (name) {
+          const active = name === currentTab ? "active" : "";
+          html += `<button class="${active}" onclick="goToTab('${name}')">${name}</button>`;
+        });
+        $("#tabs").innerHTML = html;
+      }
+
+      function showPage() {
+        showTabs();
+        $("#content").innerHTML = pages[currentTab]();
+      }
+
+      showPage();
+    </script>
+  </body>
+</html>
